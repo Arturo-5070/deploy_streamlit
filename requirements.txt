@@ -1,0 +1,10 @@
+firebase-admin
+streamlit
+altair
+pandas
+numpy
+subprocess
+time
+os
+pyngrok
+google.cloud

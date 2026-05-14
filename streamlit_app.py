@@ -5,10 +5,6 @@ from google.oauth2 import service_account
 import json
 
 key_dict = json.loads((st.secrets["textkey"]))
-creds = service_account.Credentials.from_service_account_info(key_dict)
-
-
-
 
 #-------------------------------------¡¡¡¡¡¡¡¡¡---------------------------------
 # El checkbox para mostrar todos los registros esta hasta abajo para tener mayor
@@ -18,7 +14,8 @@ creds = service_account.Credentials.from_service_account_info(key_dict)
 # ── Usa el cache para definir una funcion que guarda el cliente de Firestore ──
 @st.cache_resource
 def get_db():
-    firestore.Client(credentials=creds, project="dashboardmovies-arturosoto")
+    creds = service_account.Credentials.from_service_account_info(key_dict)
+    return firestore.Client(credentials=creds, project="dashboardmovies-arturosoto")
 
 # ── Usa el cache para definir una funcion que guarda una parte del csv ────────
 @st.cache_data

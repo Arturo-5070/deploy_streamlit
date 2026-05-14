@@ -6,70 +6,176 @@ import json
 
 key_dict = json.loads((st.secrets["textkey"]))
 creds = service_account.Credentials.from_service_account_info(key_dict)
-db = firestore.Client(credentials=creds, project="dashboardmovies-arturosoto")
-dbNames = db.collection("movies")
-st.header("Nuevo registro")
-index = st.text_input("Index")
-name = st.text_input("Name")
-sex = st.selectbox(
-  'Select Sex',
-  ('F', 'M', 'Other'))
-submit = st.button("Crear nuevo registro")
-# Once the name has submitted, upload it to the database
-if index and name and sex and submit:
-  doc_ref = db.collection("names").document(name)
-  doc_ref.set({
-  "index": index,
-  "name": name,
-  "sex": sex
-  })
-st.sidebar.write("Registro insertado correctamente")
-# ...
-def loadByName(name):
-  names_ref = dbNames.where(u'name', u'==', name)
-  currentName = None
-  for myname in names_ref.stream():
-    currentName = myname
-  return currentName
 
-st.sidebar.subheader("Buscar nombre")
-nameSearch = st.sidebar.text_input("nombre")
-btnFiltrar = st.sidebar.button("Buscar")
 
-if btnFiltrar:
-  doc = loadByName(nameSearch)
-  if doc is None:
-    st.sidebar.write("Nombre no existe")
-else:
-  st.sidebar.write(doc.to_dict())
-# ...
-st.sidebar.markdown("""---""")
-btnEliminar = st.sidebar.button("Eliminar")
 
-if btnEliminar:
-  deletename = loadByName(nameSearch)
-  if deletename is None:
-    st.sidebar.write(f"{nameSearch} no existe")
-  else:
-    dbNames.document(deletename.id).delete()
-    st.sidebar.write(f"{nameSearch} eliminado")
-#...
-st.sidebar.markdown("""---""")
-newname = st.sidebar.text_input("Actualizar nombre")
-btnActualizar = st.sidebar.button("Actualizar")
-if btnActualizar:
-  updatename = loadByName(nameSearch)
-  if updatename is None:
-    st.write(f"{nameSearch} no existe")
-  else:
-    myupdatename = dbNames.document(updatename.id)
-    myupdatename.update(
-      {
-      "name": newname
-      }
-    )
-# ...
-names_ref = list(db.collection(u'names').stream())
-names_dict = list(map(lambda x: x.to_dict(), names_ref))
-names_dataframe = pd.DataFrame(names_dict)
-st.dataframe(names_dataframe)
+
+#-------------------------------------¡¡¡¡¡¡¡¡¡---------------------------------
+# El checkbox para mostrar todos los registros esta hasta abajo para tener mayor
+# claridad visual en el sidebar  
+#-------------------------------------!!!!!!!!!---------------------------------
+
+# ── Usa el cache para definir una funcion que guarda el cliente de Firestore ──
+@st.cache_resource
+def get_db():
+    firestore.Client(credentials=creds, project="dashboardmovies-arturosoto")
+
+# ── Usa el cache para definir una funcion que guarda una parte del csv ────────
+@st.cache_data
+def load_data(nrows=1000):
+    db = get_db()
+    docs = db.collection("movies").limit(nrows).stream()
+    records = [doc.to_dict() for doc in docs]
+    return pd.DataFrame(records)
+
+# ── Usa el cache para definir una funcion que nos ayudara a obtener los ───────
+# ── unicos de una columna esto sera usado mas adelante para los select box ────
+
+@st.cache_data
+def get_unique_values(column):
+    docs = get_db().collection("movies").stream()
+    values = sorted(set(
+        doc.to_dict().get(column, "")
+        for doc in docs
+        if doc.to_dict().get(column)
+    ))
+    return values
+
+# ── Se define el estado default de los filtros para usarlos ───────────────────
+# ── en un pandas dataframe ────────────────────────────────────────────────────
+def init_state():
+    defaults = {
+        "filtered_df":     pd.DataFrame(),
+        "filters_applied": False,
+        "applied_search":  "",
+        "applied_director": "Todos",
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+def reset_filters():
+    st.session_state.filtered_df     = pd.DataFrame()
+    st.session_state.filters_applied = False
+    st.session_state.applied_search  = ""
+    st.session_state.applied_director = "Todos"
+
+# ── Se inicializa la app ──────────────────────────────────────────────────────
+db = get_db()
+df_movies = load_data(2000)
+df_movies_c = load_data()
+init_state()
+sidebar = st.sidebar
+st.session_state.sidebar_state = 'collapsed'
+
+# ── Se obtienen los unicos de las columnas de Firestore ───────────────────────
+directors = ["Todos"] + get_unique_values("director")
+companies = ["Seleccionar"] + get_unique_values("company")
+genres    = ["Seleccionar"] + get_unique_values("genre")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIDEBAR — Filtros
+# ─────────────────────────────────────────────────────────────────────────────
+sidebar.header("Filtros")
+
+search_query    = sidebar.text_input(
+    "Título del filme",
+    placeholder="Introduzca el nombre del filme...",
+    help="Filtra por la columna 'name' (no distingue mayúsculas)"
+)
+
+selected_director = sidebar.selectbox(
+    "Director",
+    directors,
+)
+
+col_btn1, col_btn2 = sidebar.columns(2)
+with col_btn1:
+    apply = sidebar.button("▶ Buscar", type="primary", use_container_width=True)
+with col_btn2:
+    reset = sidebar.button("✖ Reset", type="secondary", use_container_width=True)
+
+# ── Se resetean los filtros ───────────────────────────────────────────────────
+if reset:
+    reset_filters()
+    #st.rerun() para quitar los valores escritos en los filtros
+
+# ── Se aplican los filtros ────────────────────────────────────────────────────
+if apply:
+    filtered_df = df_movies.copy()
+
+    if search_query:
+        filtered_df = filtered_df[
+            filtered_df["name"].astype(str).str.contains(search_query, case=False, na=False)
+        ]
+
+    if selected_director != "Todos":
+        filtered_df = filtered_df[
+            filtered_df["director"].astype(str) == selected_director
+        ]
+
+    st.session_state.filtered_df     = filtered_df
+    st.session_state.filters_applied = True
+    st.session_state.applied_search   = search_query
+    st.session_state.applied_director = selected_director
+
+sidebar.divider()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIDEBAR — Formato para nuevo filme
+# ─────────────────────────────────────────────────────────────────────────────
+sidebar.header("Agregar nuevo filme ")
+
+new_name     = sidebar.text_input("Nombre",    key="input_name")
+new_director = sidebar.selectbox("Director",   directors,  key="input_director")
+new_company  = sidebar.selectbox("Compañía",   companies,  key="input_company")
+new_genre    = sidebar.selectbox("Género",     genres,     key="input_genre")
+submit       = sidebar.button("Crear nuevo filme")
+
+if submit:
+    if new_name and new_director != "Todos" and new_company != "Seleccionar" and new_genre != "Seleccionar":
+        doc_ref = db.collection("movies").document(new_name)
+        doc_ref.set({
+            "name":     new_name,
+            "director": new_director,
+            "company":  new_company,
+            "genre":    new_genre,
+        })
+        sidebar.success("Registro insertado correctamente")
+        # Invalidate cache so new values appear in dropdowns next load
+        get_unique_values.clear()
+    else:
+        sidebar.warning("¡Por favor completa todos los campos antes de guardar!")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN — Display
+# ─────────────────────────────────────────────────────────────────────────────
+st.header("🎬 :red[Netflix] App")
+
+# ── Muestra los resultados de los filtros ─────────────────────────────────────
+if st.session_state.filters_applied:
+    result_df = st.session_state.filtered_df
+    st.subheader("Resultados de búsqueda")
+
+    active = []
+    if st.session_state.applied_search:
+        active.append(f"nombre: **{st.session_state.applied_search}**")
+    if st.session_state.applied_director != "Todos":
+        active.append(f"director: **{st.session_state.applied_director}**")
+    st.caption("Filtros activos — " + " | ".join(active) if active else "Sin filtros activos")
+
+    if result_df.empty:
+        st.info("No se encontraron coincidencias.")
+    else:
+        st.dataframe(result_df, use_container_width=True)
+        st.caption(f"Mostrando {len(result_df)} de {len(df_movies)} registros")
+
+st.divider()
+
+# ── Muestra todos los registros ───────────────────────────────────────────────
+agree = sidebar.checkbox("Mostrar todos los filmes")
+if agree:
+    st.subheader("Todos los filmes")
+    with st.spinner("Cargando..."):
+        st.dataframe(df_movies_c, use_container_width=True)
+    st.caption(f"{len(df_movies_c)} registros cargados desde caché (total {len(df_movies_c)})")

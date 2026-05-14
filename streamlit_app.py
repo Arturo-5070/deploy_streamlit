@@ -3,10 +3,11 @@ import pandas as pd
 from google.cloud import firestore
 from google.oauth2 import service_account
 import json
-key_dict = json.loads(st.secrets["textkey"])
+
+key_dict = json.loads("textkey")
 creds = service_account.Credentials.from_service_account_info(key_dict)
-db = firestore.Client(credentials=creds, project="names-project-demo")
-dbNames = db.collection("names")
+db = firestore.Client(credentials=creds, project="dashboardmovies-arturosoto")
+dbNames = db.collection("movies")
 st.header("Nuevo registro")
 index = st.text_input("Index")
 name = st.text_input("Name")

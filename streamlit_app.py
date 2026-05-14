@@ -4,7 +4,7 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 import json
 
-key_dict = json.loads("textkey")
+key_dict = json.loads("FIREBASE_MOVIES")
 creds = service_account.Credentials.from_service_account_info(key_dict)
 db = firestore.Client(credentials=creds, project="dashboardmovies-arturosoto")
 dbNames = db.collection("movies")
